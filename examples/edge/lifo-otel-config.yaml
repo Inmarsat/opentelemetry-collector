@@ -1,0 +1,77 @@
+extensions:
+  throttle_queue:
+    retry_period: 1s 
+    directory: /var/lib/otelcol/throttle_storage
+    timeout: 1s
+    compaction:
+      on_start: false
+      directory: /tmp/
+      max_transaction_size: 65536
+    fsync: false
+    stale_age_duration: 1h
+    rate_limit_type: unit
+    rate_per_second: 10
+    burst: 1
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+      http:
+  mqtt:
+    broker: mqtt-broker:1883
+    client_id: otelcol-mqtt-receiver
+    topics:
+      - sensor/data
+      - telemetry/#
+
+processors:
+  batch:   
+    timeout: 5s
+    send_batch_size: 1
+    
+
+exporters:
+  debug:
+    verbosity: detailed
+  
+  otlp:
+    endpoint: "collector-2:4417"
+    tls:
+      insecure: true
+    sending_queue:
+      enabled: true
+      num_consumers: 1
+      queue_size: 1000
+      storage: throttle_queue
+    retry_on_failure:
+      enabled: true
+      initial_interval: 100ms
+      max_interval: 500ms
+      max_elapsed_time: 10m
+      multiplier: 1.0
+
+service:
+  telemetry:
+    metrics:
+      address: ":8889"
+    logs:
+      level: debug
+      development: true
+      encoding: console
+      disable_caller: false
+      disable_stacktrace: false
+  extensions: [throttle_queue]
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [debug, otlp]
+    metrics:
+      receivers: [mqtt]
+      processors: [batch]
+      exporters: [debug,otlp]
+    logs:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [debug, otlp]
